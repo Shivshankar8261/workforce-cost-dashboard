@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# Local tunnel binary (not needed for deployment)
+cloudflared

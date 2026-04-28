@@ -1,0 +1,3 @@
+[server]
+# Fix macOS watchdog FSEvents crash by using polling.
+fileWatcherType = "poll"

@@ -179,36 +179,53 @@ def main() -> None:
     )
 
     with tab_overview:
-        colA, colB = st.columns([1.2, 1.0])
-
-        with colA:
-            dept_summary = (
-                filt.groupby("Department", dropna=False)
-                .agg(
-                    avg_performance_score=("Performance_Score", "mean"),
-                    avg_monthly_salary=("Monthly_Salary", "mean"),
-                    avg_overtime_hours=("Overtime_Hours", "mean"),
-                    avg_satisfaction_score=("Employee_Satisfaction_Score", "mean"),
-                    avg_resignation_rate=("Resigned_Numeric", "mean"),
-                    employee_count=("Employee_ID", "count"),
-                )
-                .reset_index()
-                .sort_values("employee_count", ascending=False)
+        dept_summary = (
+            filt.groupby("Department", dropna=False)
+            .agg(
+                avg_performance_score=("Performance_Score", "mean"),
+                avg_monthly_salary=("Monthly_Salary", "mean"),
+                avg_overtime_hours=("Overtime_Hours", "mean"),
+                avg_satisfaction_score=("Employee_Satisfaction_Score", "mean"),
+                avg_resignation_rate=("Resigned_Numeric", "mean"),
+                employee_count=("Employee_ID", "count"),
             )
+            .reset_index()
+            .sort_values("employee_count", ascending=False)
+        )
 
+        st.subheader("Key visualizations")
+        st.caption("Simple charts aligned with your report section (performance, salary, productivity, overtime).")
+
+        r1c1, r1c2 = st.columns(2)
+        with r1c1:
+            fig = px.bar(
+                dept_summary,
+                x="Department",
+                y="avg_performance_score",
+                title="Department-wise performance analysis (average performance score)",
+                labels={"avg_performance_score": "Avg performance score"},
+                text_auto=".2f",
+            )
+            fig.update_layout(height=380, margin=dict(l=10, r=10, t=60, b=10))
+            fig.update_yaxes(range=[0, 5])
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption("Insight: helps identify high-performing departments and departments needing improvement.")
+
+        with r1c2:
             fig = px.bar(
                 dept_summary,
                 x="Department",
                 y="avg_monthly_salary",
-                color="avg_resignation_rate",
-                color_continuous_scale="RdYlGn_r",
-                title="Average monthly salary by department (colored by resignation rate)",
-                labels={"avg_monthly_salary": "Avg monthly salary", "avg_resignation_rate": "Resignation rate"},
+                title="Salary distribution analysis (average monthly salary by department)",
+                labels={"avg_monthly_salary": "Avg monthly salary"},
+                text_auto=".0f",
             )
-            fig.update_layout(height=420, margin=dict(l=10, r=10, t=60, b=10))
+            fig.update_layout(height=380, margin=dict(l=10, r=10, t=60, b=10))
             st.plotly_chart(fig, use_container_width=True)
+            st.caption("Insight: highlights cost-heavy departments for budgeting and workforce cost optimization.")
 
-        with colB:
+        r2c1, r2c2 = st.columns(2)
+        with r2c1:
             p1 = (
                 filt.groupby("Productivity_Level")
                 .size()
@@ -219,11 +236,34 @@ def main() -> None:
                 p1,
                 names="Productivity_Level",
                 values="employee_count",
-                title="Productivity level distribution",
+                title="Productivity level distribution (Low / Average / High)",
                 hole=0.45,
+                category_orders={"Productivity_Level": ["Low", "Average", "High"]},
             )
-            fig2.update_layout(height=420, margin=dict(l=10, r=10, t=60, b=10))
+            fig2.update_layout(height=380, margin=dict(l=10, r=10, t=60, b=10))
             st.plotly_chart(fig2, use_container_width=True)
+            st.caption("Insight: shows overall workforce efficiency and productivity balance.")
+
+        with r2c2:
+            ot = (
+                filt.groupby("Overtime_Status")
+                .size()
+                .reset_index(name="employee_count")
+            )
+            ot_order = ["No Overtime", "Moderate Overtime", "High Overtime"]
+            ot["Overtime_Status"] = pd.Categorical(ot["Overtime_Status"], ot_order, ordered=True)
+            ot = ot.sort_values("Overtime_Status")
+            fig3 = px.bar(
+                ot,
+                x="Overtime_Status",
+                y="employee_count",
+                title="Overtime analysis (distribution of overtime status)",
+                labels={"employee_count": "Employees", "Overtime_Status": "Overtime status"},
+                text_auto=True,
+            )
+            fig3.update_layout(height=380, margin=dict(l=10, r=10, t=60, b=10))
+            st.plotly_chart(fig3, use_container_width=True)
+            st.caption("Insight: indicates overtime workload intensity across the workforce.")
 
         st.subheader("Department summary (matches notebook aggregation)")
         st.dataframe(

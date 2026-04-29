@@ -8,15 +8,21 @@ import streamlit as st
 
 DATA_PATH = "Employee_Performance_and_Productivity_Data.xlsx"
 SHEET_NAME = "Extended_Employee_Performance_a"
+APP_DATA_VERSION = "2026-04-29-headcount-fix"
 
 
 @st.cache_data(show_spinner=False)
-def load_data(path: str = DATA_PATH, sheet_name: str = SHEET_NAME) -> pd.DataFrame:
+def load_data(
+    path: str = DATA_PATH, sheet_name: str = SHEET_NAME, _data_version: str = APP_DATA_VERSION
+) -> pd.DataFrame:
     df = pd.read_excel(path, sheet_name=sheet_name, engine="openpyxl")
 
     # Normalize types
     if "Hire_Date" in df.columns:
-        df["Hire_Date"] = pd.to_datetime(df["Hire_Date"], errors="coerce")
+        # Match the notebook's `to_date` behavior (date-level granularity).
+        # This prevents default date-range filtering from excluding rows on the max date
+        # due to time-of-day components coming from Excel.
+        df["Hire_Date"] = pd.to_datetime(df["Hire_Date"], errors="coerce").dt.normalize()
 
     # Derived columns (match the notebook logic)
     df["Resigned_Numeric"] = np.where(df["Resigned"] == True, 1, 0)
@@ -97,7 +103,9 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     if resigned:
         out = out[out["Resigned"].isin(resigned)]
     if d1 and d2 and "Hire_Date" in out.columns:
-        out = out[(out["Hire_Date"] >= pd.Timestamp(d1)) & (out["Hire_Date"] <= pd.Timestamp(d2))]
+        # Compare on date granularity (inclusive) to avoid dropping rows due to time components.
+        hd = pd.to_datetime(out["Hire_Date"], errors="coerce").dt.date
+        out = out[(hd >= d1) & (hd <= d2)]
 
     return out
 
@@ -143,6 +151,14 @@ def main() -> None:
         "Interactive view of performance, productivity drivers, workforce cost patterns, and resignation signals "
         "based on the 100,000-row dataset."
     )
+
+    # Streamlit Cloud can keep cached data across redeploys.
+    # Provide a clear-cache control so the displayed KPIs always reflect the latest code + data.
+    with st.sidebar:
+        st.divider()
+        if st.button("Clear cache & reload", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
 
     df = load_data()
     filt = apply_filters(df)

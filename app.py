@@ -275,33 +275,165 @@ def main() -> None:
 
     with tab_drivers:
         st.subheader("Productivity & cost drivers")
-        st.caption("Use scatter plots to show relationships that support workforce reallocation and AI/tooling decisions.")
+        st.caption(
+            "Simple, presentation-ready views of the same relationships. "
+            "These charts are designed to be easy to explain in a viva/presentation."
+        )
+
+        view_mode = st.radio(
+            "Chart style",
+            ["Simple (recommended)", "Advanced (scatter/density)"],
+            horizontal=True,
+        )
 
         c1, c2 = st.columns(2)
-        with c1:
-            fig = px.scatter(
-                filt.sample(min(len(filt), 8000), random_state=7) if len(filt) > 0 else filt,
-                x="Work_Hours_Per_Week",
-                y="Performance_Score",
-                color="Overtime_Status",
-                title="Work hours vs performance (colored by overtime status)",
-                opacity=0.35,
-            )
-            fig.update_layout(height=420, margin=dict(l=10, r=10, t=60, b=10))
-            st.plotly_chart(fig, use_container_width=True)
 
-        with c2:
-            fig = px.scatter(
-                filt.sample(min(len(filt), 8000), random_state=9) if len(filt) > 0 else filt,
-                x="Training_Hours",
-                y="Employee_Satisfaction_Score",
-                color="Productivity_Level",
-                title="Training hours vs satisfaction (colored by productivity level)",
-                opacity=0.35,
-                category_orders={"Productivity_Level": ["Low", "Average", "High"]},
-            )
-            fig.update_layout(height=420, margin=dict(l=10, r=10, t=60, b=10))
-            st.plotly_chart(fig, use_container_width=True)
+        if view_mode == "Simple (recommended)":
+            with c1:
+                # 1) Line chart: average satisfaction across training-hour bins
+                b = filt[["Training_Hours", "Employee_Satisfaction_Score"]].dropna()
+                if len(b):
+                    b = b.copy()
+                    b["Training_Bin"] = pd.cut(
+                        b["Training_Hours"],
+                        bins=[0, 20, 40, 60, 80, 100],
+                        include_lowest=True,
+                    ).astype(str)
+                    sat_by_bin = (
+                        b.groupby("Training_Bin")["Employee_Satisfaction_Score"]
+                        .mean()
+                        .reset_index(name="avg_satisfaction")
+                    )
+                    fig = px.line(
+                        sat_by_bin,
+                        x="Training_Bin",
+                        y="avg_satisfaction",
+                        markers=True,
+                        title="Average satisfaction across training hour ranges",
+                        labels={"avg_satisfaction": "Avg satisfaction score", "Training_Bin": "Training hours (range)"},
+                    )
+                    fig.update_layout(height=420, margin=dict(l=10, r=10, t=60, b=10))
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.caption("Interpretation: the line shows how the average satisfaction score changes across training ranges.")
+                else:
+                    st.info("Not enough data after filters to build the training chart.")
+
+            with c2:
+                # 2) Pie chart: productivity distribution (already used elsewhere, repeated here for storytelling)
+                p = (
+                    filt.groupby("Productivity_Level")
+                    .size()
+                    .reset_index(name="employee_count")
+                    .sort_values("employee_count", ascending=False)
+                )
+                fig = px.pie(
+                    p,
+                    names="Productivity_Level",
+                    values="employee_count",
+                    title="Productivity mix (share of employees)",
+                    hole=0.45,
+                    category_orders={"Productivity_Level": ["Low", "Average", "High"]},
+                )
+                fig.update_layout(height=380, margin=dict(l=10, r=10, t=60, b=10))
+                st.plotly_chart(fig, use_container_width=True)
+
+        else:
+            # Advanced views (kept for exploration)
+            with c1:
+                fmt1 = st.selectbox(
+                    "Work hours vs performance format",
+                    ["Scatter (sampled)", "2D density heatmap", "Binned box plot"],
+                    index=0,
+                )
+
+                base1 = filt if len(filt) == 0 else filt.copy()
+                s1 = base1.sample(min(len(base1), 8000), random_state=7) if (fmt1 == "Scatter (sampled)") else base1
+
+                if fmt1 == "2D density heatmap":
+                    fig = px.density_heatmap(
+                        s1,
+                        x="Work_Hours_Per_Week",
+                        y="Performance_Score",
+                        title="Work hours vs performance (2D density)",
+                        nbinsx=40,
+                        nbinsy=20,
+                        color_continuous_scale="Blues",
+                    )
+                    fig.update_traces(
+                        hovertemplate="Work hours bin=%{x}<br>Performance bin=%{y}<br>Count=%{z}<extra></extra>"
+                    )
+                elif fmt1 == "Binned box plot":
+                    b = s1.copy()
+                    b["Work_Hours_Bin"] = pd.qcut(b["Work_Hours_Per_Week"], q=4, duplicates="drop").astype(str)
+                    fig = px.box(
+                        b,
+                        x="Work_Hours_Bin",
+                        y="Performance_Score",
+                        color="Overtime_Status",
+                        title="Performance distribution by work-hours quartile (colored by overtime status)",
+                    )
+                    fig.update_xaxes(title="Work hours per week (quartiles)")
+                else:
+                    fig = px.scatter(
+                        s1,
+                        x="Work_Hours_Per_Week",
+                        y="Performance_Score",
+                        color="Overtime_Status",
+                        title="Work hours vs performance (colored by overtime status)",
+                        opacity=0.35,
+                    )
+                fig.update_layout(height=420, margin=dict(l=10, r=10, t=60, b=10))
+                st.plotly_chart(fig, use_container_width=True)
+
+            with c2:
+                fmt2 = st.selectbox(
+                    "Training hours vs satisfaction format",
+                    ["Scatter (sampled)", "2D density heatmap", "Binned violin plot"],
+                    index=0,
+                )
+
+                base2 = filt if len(filt) == 0 else filt.copy()
+                s2 = base2.sample(min(len(base2), 8000), random_state=9) if (fmt2 == "Scatter (sampled)") else base2
+
+                if fmt2 == "2D density heatmap":
+                    fig = px.density_heatmap(
+                        s2,
+                        x="Training_Hours",
+                        y="Employee_Satisfaction_Score",
+                        title="Training hours vs satisfaction (2D density)",
+                        nbinsx=40,
+                        nbinsy=25,
+                        color_continuous_scale="Purples",
+                    )
+                    fig.update_traces(
+                        hovertemplate="Training bin=%{x}<br>Satisfaction bin=%{y}<br>Count=%{z}<extra></extra>"
+                    )
+                elif fmt2 == "Binned violin plot":
+                    b = s2.copy()
+                    b["Training_Hours_Bin"] = pd.qcut(b["Training_Hours"], q=4, duplicates="drop").astype(str)
+                    fig = px.violin(
+                        b,
+                        x="Training_Hours_Bin",
+                        y="Employee_Satisfaction_Score",
+                        color="Productivity_Level",
+                        box=True,
+                        points=False,
+                        title="Satisfaction distribution by training-hours quartile (colored by productivity level)",
+                        category_orders={"Productivity_Level": ["Low", "Average", "High"]},
+                    )
+                    fig.update_xaxes(title="Training hours (quartiles)")
+                else:
+                    fig = px.scatter(
+                        s2,
+                        x="Training_Hours",
+                        y="Employee_Satisfaction_Score",
+                        color="Productivity_Level",
+                        title="Training hours vs satisfaction (colored by productivity level)",
+                        opacity=0.35,
+                        category_orders={"Productivity_Level": ["Low", "Average", "High"]},
+                    )
+                fig.update_layout(height=420, margin=dict(l=10, r=10, t=60, b=10))
+                st.plotly_chart(fig, use_container_width=True)
 
         corr_cols = [
             "Performance_Score",
